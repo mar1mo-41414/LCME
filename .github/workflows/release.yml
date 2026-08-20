@@ -15,6 +15,9 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
+      - name: Install ldid
+        run: brew install ldid
+
       - name: Install Theos
         run: |
           THEOS_DIR="$HOME/theos"
