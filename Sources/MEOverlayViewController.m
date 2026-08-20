@@ -101,6 +101,9 @@ static NSString *const kCellReuseID = @"MEResultCell";
     if (self.panelExpanded) {
         [self clampViewToScreen:self.panelView];
         [self reloadResultsPreservingSelection];
+    } else {
+        // パネルを隠してもfirstResponderが残っているとキーボードが閉じないため明示的に解除する。
+        [self.panelView endEditing:YES];
     }
 }
 
@@ -318,6 +321,8 @@ static NSString *const kCellReuseID = @"MEResultCell";
 }
 
 - (void)searchTapped {
+    [self.valueField resignFirstResponder];
+
     NSString *value = self.valueField.text ?: @"";
     if (value.length == 0) {
         self.statusLabel.text = @"値を入力してください";
@@ -341,6 +346,8 @@ static NSString *const kCellReuseID = @"MEResultCell";
 }
 
 - (void)narrowTapped {
+    [self.valueField resignFirstResponder];
+
     NSString *value = self.valueField.text ?: @"";
     if (value.length == 0 || self.matches.count == 0) return;
 
