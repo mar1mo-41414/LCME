@@ -1,0 +1,44 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - "*"
+
+permissions:
+  contents: write
+
+jobs:
+  build-and-release:
+    runs-on: macos-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install Theos
+        run: |
+          THEOS_DIR="$HOME/theos"
+          git clone --recursive https://github.com/theos/theos.git "$THEOS_DIR"
+          echo "THEOS=$THEOS_DIR" >> "$GITHUB_ENV"
+
+      - name: Build (release)
+        run: make FINALPACKAGE=1
+
+      - name: Locate build artifact
+        id: artifact
+        run: |
+          DYLIB_PATH=$(find .theos/obj -maxdepth 1 -name "LCMemEditor.dylib")
+          if [ -z "$DYLIB_PATH" ]; then
+            echo "LCMemEditor.dylib not found under .theos/obj" >&2
+            exit 1
+          fi
+          echo "path=$DYLIB_PATH" >> "$GITHUB_OUTPUT"
+
+      - name: Create GitHub Release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release create "${{ github.ref_name }}" \
+            "${{ steps.artifact.outputs.path }}" \
+            --title "${{ github.ref_name }}" \
+            --generate-notes
