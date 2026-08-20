@@ -16,7 +16,10 @@ static NSString *const kCellReuseID = @"MEResultCell";
 @property (nonatomic, strong) UIButton *typeButton;
 @property (nonatomic, strong) UISwitch *fullScanSwitch;
 @property (nonatomic, strong) UILabel *fullScanLabel;
+@property (nonatomic, strong) UISwitch *rangeSwitch;
+@property (nonatomic, strong) UILabel *rangeLabel;
 @property (nonatomic, strong) UITextField *valueField;
+@property (nonatomic, strong) UITextField *maxValueField;
 @property (nonatomic, strong) UIButton *searchButton;
 @property (nonatomic, strong) UIButton *narrowButton;
 @property (nonatomic, strong) UIButton *freezeMasterButton;
@@ -174,9 +177,26 @@ static NSString *const kCellReuseID = @"MEResultCell";
     [panel addSubview:fullScanLabel];
     self.fullScanLabel = fullScanLabel;
 
+    y += 34;
+
+    // 範囲検索トグル(値が常に変動する対象向け。min <= 値 <= max で候補を探す)
+    UISwitch *rangeSwitch = [[UISwitch alloc] init];
+    rangeSwitch.frame = CGRectMake(width - pad - 51, y, 51, 30);
+    rangeSwitch.onTintColor = [UIColor systemGreenColor];
+    [rangeSwitch addTarget:self action:@selector(rangeSwitchChanged) forControlEvents:UIControlEventValueChanged];
+    [panel addSubview:rangeSwitch];
+    self.rangeSwitch = rangeSwitch;
+
+    UILabel *rangeLabel = [[UILabel alloc] initWithFrame:CGRectMake(pad, y + 6, width - pad * 2 - 51 - 8, 18)];
+    rangeLabel.text = @"範囲検索(String非対応)";
+    rangeLabel.font = [UIFont systemFontOfSize:11];
+    rangeLabel.textColor = [UIColor lightGrayColor];
+    [panel addSubview:rangeLabel];
+    self.rangeLabel = rangeLabel;
+
     y += 40;
 
-    // 値入力欄
+    // 値入力欄(範囲検索ONの場合は左半分=最小値・右半分=最大値の2欄になる)
     UITextField *valueField = [[UITextField alloc] initWithFrame:CGRectMake(pad, y, width - pad * 2, 34)];
     valueField.placeholder = @"検索する値";
     valueField.backgroundColor = [UIColor colorWithWhite:1 alpha:0.1];
@@ -187,6 +207,18 @@ static NSString *const kCellReuseID = @"MEResultCell";
     valueField.delegate = self;
     [panel addSubview:valueField];
     self.valueField = valueField;
+
+    UITextField *maxValueField = [[UITextField alloc] initWithFrame:CGRectMake(pad, y, width - pad * 2, 34)];
+    maxValueField.placeholder = @"最大値";
+    maxValueField.backgroundColor = [UIColor colorWithWhite:1 alpha:0.1];
+    maxValueField.textColor = [UIColor whiteColor];
+    maxValueField.borderStyle = UITextBorderStyleRoundedRect;
+    maxValueField.keyboardType = UIKeyboardTypeASCIICapable;
+    maxValueField.returnKeyType = UIReturnKeySearch;
+    maxValueField.delegate = self;
+    maxValueField.hidden = YES;
+    [panel addSubview:maxValueField];
+    self.maxValueField = maxValueField;
 
     y += 42;
 
@@ -295,10 +327,47 @@ static NSString *const kCellReuseID = @"MEResultCell";
         [sheet addAction:[UIAlertAction actionWithTitle:MEValueTypeName(type) style:UIAlertActionStyleDefault handler:^(UIAlertAction * _Nonnull action) {
             self.currentType = type;
             [self updateTypeButtonTitle];
+            if (type == MEValueTypeString && self.rangeSwitch.isOn) {
+                self.rangeSwitch.on = NO;
+                [self updateValueFieldLayout];
+                self.statusLabel.text = @"String型は範囲検索に対応していません";
+            }
         }]];
     }
     [sheet addAction:[UIAlertAction actionWithTitle:@"キャンセル" style:UIAlertActionStyleCancel handler:nil]];
     [self presentViewController:sheet animated:YES completion:nil];
+}
+
+#pragma mark - 範囲検索トグル
+
+- (void)rangeSwitchChanged {
+    if (self.rangeSwitch.isOn && self.currentType == MEValueTypeString) {
+        self.rangeSwitch.on = NO;
+        self.statusLabel.text = @"String型は範囲検索に対応していません";
+        return;
+    }
+    [self updateValueFieldLayout];
+}
+
+- (void)updateValueFieldLayout {
+    BOOL range = self.rangeSwitch.isOn;
+    CGFloat fullWidth = self.valueField.superview.bounds.size.width;
+    CGFloat pad = 10;
+    CGFloat y = self.valueField.frame.origin.y;
+    CGFloat h = self.valueField.frame.size.height;
+
+    if (range) {
+        CGFloat halfWidth = (fullWidth - pad * 3) / 2;
+        self.valueField.frame = CGRectMake(pad, y, halfWidth, h);
+        self.valueField.placeholder = @"最小値";
+        self.maxValueField.frame = CGRectMake(pad * 2 + halfWidth, y, halfWidth, h);
+        self.maxValueField.hidden = NO;
+    } else {
+        self.valueField.frame = CGRectMake(pad, y, fullWidth - pad * 2, h);
+        self.valueField.placeholder = @"検索する値";
+        self.maxValueField.hidden = YES;
+        [self.maxValueField resignFirstResponder];
+    }
 }
 
 #pragma mark - 検索・絞込
@@ -322,10 +391,13 @@ static NSString *const kCellReuseID = @"MEResultCell";
 
 - (void)searchTapped {
     [self.valueField resignFirstResponder];
+    [self.maxValueField resignFirstResponder];
 
+    BOOL range = self.rangeSwitch.isOn;
     NSString *value = self.valueField.text ?: @"";
-    if (value.length == 0) {
-        self.statusLabel.text = @"値を入力してください";
+    NSString *maxValue = self.maxValueField.text ?: @"";
+    if (value.length == 0 || (range && maxValue.length == 0)) {
+        self.statusLabel.text = range ? @"最小値・最大値を入力してください" : @"値を入力してください";
         return;
     }
     MEValueType type = self.currentType;
@@ -335,7 +407,9 @@ static NSString *const kCellReuseID = @"MEResultCell";
     self.statusLabel.text = @"検索中…";
 
     dispatch_async(dispatch_get_global_queue(QOS_CLASS_USER_INITIATED, 0), ^{
-        NSArray<MEMatch *> *results = [[MemScanner sharedScanner] scanForValueString:value type:type fullScan:fullScan];
+        NSArray<MEMatch *> *results = range
+            ? [[MemScanner sharedScanner] scanForRangeMin:value max:maxValue type:type fullScan:fullScan]
+            : [[MemScanner sharedScanner] scanForValueString:value type:type fullScan:fullScan];
         dispatch_async(dispatch_get_main_queue(), ^{
             self.matches = results;
             [self.tableView reloadData];
@@ -347,16 +421,21 @@ static NSString *const kCellReuseID = @"MEResultCell";
 
 - (void)narrowTapped {
     [self.valueField resignFirstResponder];
+    [self.maxValueField resignFirstResponder];
 
+    BOOL range = self.rangeSwitch.isOn;
     NSString *value = self.valueField.text ?: @"";
-    if (value.length == 0 || self.matches.count == 0) return;
+    NSString *maxValue = self.maxValueField.text ?: @"";
+    if (value.length == 0 || (range && maxValue.length == 0) || self.matches.count == 0) return;
 
     NSArray<MEMatch *> *previous = self.matches;
     [self setUIBusy:YES];
     self.statusLabel.text = @"絞込中…";
 
     dispatch_async(dispatch_get_global_queue(QOS_CLASS_USER_INITIATED, 0), ^{
-        NSArray<MEMatch *> *results = [[MemScanner sharedScanner] narrowMatches:previous valueString:value];
+        NSArray<MEMatch *> *results = range
+            ? [[MemScanner sharedScanner] narrowMatchesForRange:previous min:value max:maxValue]
+            : [[MemScanner sharedScanner] narrowMatches:previous valueString:value];
         dispatch_async(dispatch_get_main_queue(), ^{
             self.matches = results;
             [self.tableView reloadData];

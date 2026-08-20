@@ -120,6 +120,26 @@ static BOOL MEBytesMatch(const void *a, const void *b, MEValueType type) {
     }
 }
 
+/// 固定長の数値型バイト列をdoubleへ変換する(範囲検索の比較用)。Stringには非対応。
+/// Int64/UInt64は2^53を超える値でdoubleの丸め誤差が生じうるが、ゲーム内の
+/// 一般的な数値(HP・所持金等)の範囲では実用上問題にならない。
+static double MEDoubleFromBytes(const void *bytes, MEValueType type) {
+    switch (type) {
+        case MEValueTypeInt8: { int8_t v; memcpy(&v, bytes, sizeof(v)); return v; }
+        case MEValueTypeUInt8: { uint8_t v; memcpy(&v, bytes, sizeof(v)); return v; }
+        case MEValueTypeInt16: { int16_t v; memcpy(&v, bytes, sizeof(v)); return v; }
+        case MEValueTypeUInt16: { uint16_t v; memcpy(&v, bytes, sizeof(v)); return v; }
+        case MEValueTypeInt32: { int32_t v; memcpy(&v, bytes, sizeof(v)); return v; }
+        case MEValueTypeUInt32: { uint32_t v; memcpy(&v, bytes, sizeof(v)); return v; }
+        case MEValueTypeInt64: { int64_t v; memcpy(&v, bytes, sizeof(v)); return (double)v; }
+        case MEValueTypeUInt64: { uint64_t v; memcpy(&v, bytes, sizeof(v)); return (double)v; }
+        case MEValueTypeFloat: { float v; memcpy(&v, bytes, sizeof(v)); return v; }
+        case MEValueTypeDouble: { double v; memcpy(&v, bytes, sizeof(v)); return v; }
+        case MEValueTypeString: return 0;
+    }
+    return 0;
+}
+
 #pragma mark - メモリ領域列挙
 
 typedef struct {
@@ -256,6 +276,92 @@ static NSArray<NSValue *> *MEEnumerateRegions(task_t task, BOOL fullScan) {
                 matched = MEBytesMatch((const void *)dataPtr, needle, match.type);
             }
             if (matched) {
+                [results addObject:match];
+            }
+        }
+        if (dataPtr) {
+            vm_deallocate(mach_task_self(), dataPtr, dataCount);
+        }
+    }
+
+    return results;
+}
+
+- (NSArray<MEMatch *> *)scanForRangeMin:(NSString *)minString
+                                     max:(NSString *)maxString
+                                    type:(MEValueType)type
+                                fullScan:(BOOL)fullScan {
+    if (type == MEValueTypeString) return @[]; // Stringは範囲検索非対応
+
+    double minValue = strtod(minString.UTF8String ?: "", NULL);
+    double maxValue = strtod(maxString.UTF8String ?: "", NULL);
+    if (minValue > maxValue) { double tmp = minValue; minValue = maxValue; maxValue = tmp; }
+
+    NSUInteger slotSize = MEValueTypeFixedSize(type);
+    if (slotSize == 0) return @[];
+
+    task_t task = mach_task_self();
+    NSArray<NSValue *> *regions = MEEnumerateRegions(task, fullScan);
+    NSMutableArray<MEMatch *> *results = [NSMutableArray array];
+
+    const mach_vm_size_t kChunkSize = 4 * 1024 * 1024; // 4MB単位で読み込む
+
+    for (NSValue *regionValue in regions) {
+        MERegion region;
+        [regionValue getValue:&region];
+
+        mach_vm_size_t offset = 0;
+        while (offset < region.size) {
+            mach_vm_size_t remaining = region.size - offset;
+            mach_vm_size_t wantSize = MIN(kChunkSize, remaining);
+            mach_vm_size_t overlap = slotSize - 1;
+            mach_vm_size_t readSize = MIN(wantSize + overlap, remaining);
+
+            vm_offset_t dataPtr = 0;
+            mach_msg_type_number_t dataCount = 0;
+            kern_return_t kr = mach_vm_read(task, region.address + offset, readSize, &dataPtr, &dataCount);
+            if (kr == KERN_SUCCESS) {
+                const uint8_t *buf = (const uint8_t *)dataPtr;
+                mach_vm_size_t scanLimit = MIN((mach_vm_size_t)wantSize, dataCount);
+
+                for (mach_vm_size_t i = 0; i + slotSize <= dataCount && i < scanLimit; i += slotSize) {
+                    double v = MEDoubleFromBytes(buf + i, type);
+                    if (v >= minValue && v <= maxValue) {
+                        mach_vm_address_t matchAddr = region.address + offset + i;
+                        [results addObject:[[MEMatch alloc] initWithAddress:matchAddr type:type]];
+                    }
+                }
+
+                vm_deallocate(mach_task_self(), dataPtr, dataCount);
+            }
+
+            offset += wantSize;
+        }
+    }
+
+    return results;
+}
+
+- (NSArray<MEMatch *> *)narrowMatchesForRange:(NSArray<MEMatch *> *)previousMatches
+                                            min:(NSString *)minString
+                                            max:(NSString *)maxString {
+    double minValue = strtod(minString.UTF8String ?: "", NULL);
+    double maxValue = strtod(maxString.UTF8String ?: "", NULL);
+    if (minValue > maxValue) { double tmp = minValue; minValue = maxValue; maxValue = tmp; }
+
+    task_t task = mach_task_self();
+    NSMutableArray<MEMatch *> *results = [NSMutableArray array];
+
+    for (MEMatch *match in previousMatches) {
+        if (match.type == MEValueTypeString) continue;
+        NSUInteger slotSize = MEValueTypeFixedSize(match.type);
+
+        vm_offset_t dataPtr = 0;
+        mach_msg_type_number_t dataCount = 0;
+        kern_return_t kr = mach_vm_read(task, match.address, slotSize, &dataPtr, &dataCount);
+        if (kr == KERN_SUCCESS && dataCount >= slotSize) {
+            double v = MEDoubleFromBytes((const void *)dataPtr, match.type);
+            if (v >= minValue && v <= maxValue) {
                 [results addObject:match];
             }
         }

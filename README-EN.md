@@ -14,6 +14,8 @@ process memory (`mach_task_self()`) via `mach_vm_*` APIs.
 - Drop the dylib into LC's Tweaks folder and assign it as the target app's Tweak Folder — no extra configuration needed
 - Search a value → get a list of candidate addresses → edit/freeze individual candidates
 - Narrowing search that re-scans the previous candidate set as values change in-game
+- **Range search**: find candidates within a min–max range, for targets whose value keeps
+  fluctuating and are hard to hit with an exact match (String type not supported)
 - Freeze uses a **write-loop approach** (rewrites every 100ms); no thread suspension
 - Supported types: Int8/16/32/64, UInt8/16/32/64, Float, Double, String (UTF-8, substring match)
 - Float/Double comparisons use a small tolerance (GameGuardian-like fuzzy matching)
@@ -47,7 +49,11 @@ The build output is `.theos/obj/debug/LCMemEditor.dylib`. For a release build, u
 1. Tap the toggle button to open the panel
 2. Pick a scan type via the "型" (type) button (Int32, Float, String, etc.)
 3. Enter a value and tap "検索(新規)" (New Search) to get a candidate address list
-4. Change the value in-game, enter the new value, and tap "絞込" (Narrow) to shrink the candidate list
+   - Turn on "範囲検索" (Range search) to switch the input to two fields, min and max,
+     and find candidates where min <= value <= max (useful for HP, currency, etc. that
+     keep changing; not available for String)
+4. Change the value in-game, enter the new value (or new min/max in range mode), and tap
+   "絞込" (Narrow) to shrink the candidate list
 5. Edit a value inline in a row and press Enter/Return to write it immediately
 6. Tap "固定" (Freeze) on a row to add/remove that address from the freeze set
 7. Use the "フリーズ実行中/停止中" button at the bottom of the panel to start/stop the write loop for all frozen entries

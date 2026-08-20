@@ -25,6 +25,18 @@ NS_ASSUME_NONNULL_BEGIN
 - (NSArray<MEMatch *> *)narrowMatches:(NSArray<MEMatch *> *)previousMatches
                           valueString:(NSString *)valueString;
 
+/// 新規スキャン(範囲指定)。min <= 値 <= max を満たす候補を探す。Stringには非対応(空配列を返す)。
+/// 値が常に変動するステータス等、完全一致では狙いにくい対象向け。
+- (NSArray<MEMatch *> *)scanForRangeMin:(NSString *)minString
+                                     max:(NSString *)maxString
+                                    type:(MEValueType)type
+                                fullScan:(BOOL)fullScan;
+
+/// 直前の候補群のうち、現在も指定範囲内にあるものだけを残す絞り込み検索(範囲指定)。
+- (NSArray<MEMatch *> *)narrowMatchesForRange:(NSArray<MEMatch *> *)previousMatches
+                                            min:(NSString *)minString
+                                            max:(NSString *)maxString;
+
 /// 指定アドレスの現在値を表示用文字列として読み出す。読み取り失敗時はnil。
 - (nullable NSString *)readValueStringAtAddress:(mach_vm_address_t)address type:(MEValueType)type;
 
