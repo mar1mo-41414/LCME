@@ -134,7 +134,18 @@ static NSString *const kCellReuseID = @"MEResultCell";
 
 - (void)livePollTick {
     if (self.isBusy || self.matches.count == 0) return;
-    [self.tableView reloadData];
+
+    // reloadDataはセルの再利用(dequeue)を伴い、編集中のセルであっても
+    // firstResponder状態が壊れてキーボードが閉じてしまう。表示中のセルを
+    // 直接書き換えることでセルの再利用を発生させず、編集中の入力を妨げない。
+    for (MEResultCell *cell in self.tableView.visibleCells) {
+        NSIndexPath *indexPath = [self.tableView indexPathForCell:cell];
+        if (!indexPath || (NSUInteger)indexPath.row >= self.matches.count) continue;
+        MEMatch *match = self.matches[indexPath.row];
+        NSString *currentValue = [[MemScanner sharedScanner] readValueStringAtAddress:match.address type:match.type] ?: @"?";
+        BOOL frozen = [FreezeManager.sharedManager entryForAddress:match.address] != nil;
+        [cell configureWithMatch:match currentValueString:currentValue frozen:frozen];
+    }
 }
 
 #pragma mark - パネル本体
