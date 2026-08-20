@@ -16,6 +16,8 @@ process memory (`mach_task_self()`) via `mach_vm_*` APIs.
 - Narrowing search that re-scans the previous candidate set as values change in-game
 - **Range search**: find candidates within a min–max range, for targets whose value keeps
   fluctuating and are hard to hit with an exact match (String type not supported)
+- **Direct address entry**: add a hex address straight to the candidate list without searching
+- The candidate list auto-refreshes every 0.5s while the panel is open, so you can watch values change live
 - Freeze uses a **write-loop approach** (rewrites every 100ms); no thread suspension
 - Supported types: Int8/16/32/64, UInt8/16/32/64, Float, Double, String (UTF-8, substring match)
 - Float/Double comparisons use a small tolerance (GameGuardian-like fuzzy matching)
@@ -57,6 +59,8 @@ The build output is `.theos/obj/debug/LCMemEditor.dylib`. For a release build, u
 5. Edit a value inline in a row and press Enter/Return to write it immediately
 6. Tap "固定" (Freeze) on a row to add/remove that address from the freeze set
 7. Use the "フリーズ実行中/停止中" button at the bottom of the panel to start/stop the write loop for all frozen entries
+8. If you already know an address, type it in hex into the "0xアドレス直接指定" field and tap "追加" (Add) —
+   it joins the candidate list without a search, and can be tracked/edited/frozen like any other candidate
 
 The panel header and the toggle button can both be dragged to reposition them.
 

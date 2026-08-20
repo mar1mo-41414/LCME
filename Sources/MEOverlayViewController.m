@@ -22,6 +22,8 @@ static NSString *const kCellReuseID = @"MEResultCell";
 @property (nonatomic, strong) UITextField *maxValueField;
 @property (nonatomic, strong) UIButton *searchButton;
 @property (nonatomic, strong) UIButton *narrowButton;
+@property (nonatomic, strong) UITextField *addressField;
+@property (nonatomic, strong) UIButton *addAddressButton;
 @property (nonatomic, strong) UIButton *freezeMasterButton;
 @property (nonatomic, strong) UILabel *statusLabel;
 @property (nonatomic, strong) UITableView *tableView;
@@ -30,6 +32,8 @@ static NSString *const kCellReuseID = @"MEResultCell";
 @property (nonatomic, assign) MEValueType currentType;
 @property (nonatomic, strong) NSArray<MEMatch *> *matches;
 @property (nonatomic, assign) BOOL panelExpanded;
+@property (nonatomic, assign) BOOL isBusy;
+@property (nonatomic, weak) NSTimer *livePollTimer;
 
 @end
 
@@ -104,17 +108,40 @@ static NSString *const kCellReuseID = @"MEResultCell";
     if (self.panelExpanded) {
         [self clampViewToScreen:self.panelView];
         [self reloadResultsPreservingSelection];
+        [self startLivePolling];
     } else {
         // パネルを隠してもfirstResponderが残っているとキーボードが閉じないため明示的に解除する。
         [self.panelView endEditing:YES];
+        [self stopLivePolling];
     }
+}
+
+#pragma mark - 値の変動追跡(表示中の候補一覧を定期的に読み直す)
+
+- (void)startLivePolling {
+    [self stopLivePolling];
+    self.livePollTimer = [NSTimer scheduledTimerWithTimeInterval:0.5
+                                                            target:self
+                                                          selector:@selector(livePollTick)
+                                                          userInfo:nil
+                                                           repeats:YES];
+}
+
+- (void)stopLivePolling {
+    [self.livePollTimer invalidate];
+    self.livePollTimer = nil;
+}
+
+- (void)livePollTick {
+    if (self.isBusy || self.matches.count == 0) return;
+    [self.tableView reloadData];
 }
 
 #pragma mark - パネル本体
 
 - (void)buildPanel {
     CGFloat width = 300;
-    CGFloat height = 480;
+    CGFloat height = 520;
     CGRect screen = self.view.bounds;
     UIView *panel = [[UIView alloc] initWithFrame:CGRectMake(screen.size.width - width - 12, 80, width, height)];
     panel.backgroundColor = [UIColor colorWithRed:0.08 green:0.08 blue:0.08 alpha:0.92];
@@ -239,6 +266,30 @@ static NSString *const kCellReuseID = @"MEResultCell";
     [narrowButton addTarget:self action:@selector(narrowTapped) forControlEvents:UIControlEventTouchUpInside];
     [panel addSubview:narrowButton];
     self.narrowButton = narrowButton;
+
+    y += 42;
+
+    // アドレス直接指定(検索を介さず特定アドレスを候補一覧に追加し、変動追跡・編集を行う)
+    UITextField *addressField = [[UITextField alloc] initWithFrame:CGRectMake(pad, y, width - pad * 3 - 70, 34)];
+    addressField.placeholder = @"0xアドレス直接指定";
+    addressField.backgroundColor = [UIColor colorWithWhite:1 alpha:0.1];
+    addressField.textColor = [UIColor whiteColor];
+    addressField.borderStyle = UITextBorderStyleRoundedRect;
+    addressField.keyboardType = UIKeyboardTypeASCIICapable;
+    addressField.autocapitalizationType = UITextAutocapitalizationTypeNone;
+    addressField.autocorrectionType = UITextAutocorrectionTypeNo;
+    addressField.returnKeyType = UIReturnKeyDone;
+    addressField.delegate = self;
+    [panel addSubview:addressField];
+    self.addressField = addressField;
+
+    UIButton *addAddressButton = [UIButton buttonWithType:UIButtonTypeSystem];
+    addAddressButton.frame = CGRectMake(CGRectGetMaxX(addressField.frame) + pad, y, 70 - pad, 34);
+    [addAddressButton setTitle:@"追加" forState:UIControlStateNormal];
+    [self stylePrimaryButton:addAddressButton];
+    [addAddressButton addTarget:self action:@selector(addAddressTapped) forControlEvents:UIControlEventTouchUpInside];
+    [panel addSubview:addAddressButton];
+    self.addAddressButton = addAddressButton;
 
     y += 42;
 
@@ -374,11 +425,16 @@ static NSString *const kCellReuseID = @"MEResultCell";
 
 - (BOOL)textFieldShouldReturn:(UITextField *)textField {
     [textField resignFirstResponder];
-    [self searchTapped];
+    if (textField == self.addressField) {
+        [self addAddressTapped];
+    } else {
+        [self searchTapped];
+    }
     return YES;
 }
 
 - (void)setUIBusy:(BOOL)busy {
+    self.isBusy = busy;
     self.searchButton.enabled = !busy;
     self.narrowButton.enabled = !busy && self.matches.count > 0;
     self.typeButton.enabled = !busy;
@@ -387,6 +443,46 @@ static NSString *const kCellReuseID = @"MEResultCell";
     } else {
         [self.spinner stopAnimating];
     }
+}
+
+#pragma mark - アドレス直接指定
+
+- (void)addAddressTapped {
+    [self.addressField resignFirstResponder];
+
+    NSString *text = [self.addressField.text stringByTrimmingCharactersInSet:[NSCharacterSet whitespaceCharacterSet]];
+    if ([text hasPrefix:@"0x"] || [text hasPrefix:@"0X"]) {
+        text = [text substringFromIndex:2];
+    }
+    if (text.length == 0) {
+        self.statusLabel.text = @"アドレスを入力してください";
+        return;
+    }
+
+    const char *cstr = text.UTF8String;
+    char *endPtr = NULL;
+    mach_vm_address_t address = (mach_vm_address_t)strtoull(cstr, &endPtr, 16);
+    BOOL consumedAnyDigit = endPtr != cstr;
+    BOOL consumedAllInput = endPtr != NULL && *endPtr == '\0';
+    if (!consumedAnyDigit || !consumedAllInput) {
+        self.statusLabel.text = @"アドレスの形式が正しくありません(16進数で入力)";
+        return;
+    }
+
+    MEValueType type = self.currentType;
+    NSMutableArray<MEMatch *> *updated = [self.matches mutableCopy] ?: [NSMutableArray array];
+    // 同一アドレス・型が既にあれば重複追加しない。
+    for (MEMatch *existing in updated) {
+        if (existing.address == address && existing.type == type) {
+            self.statusLabel.text = @"既に一覧に追加済みです";
+            return;
+        }
+    }
+    [updated insertObject:[[MEMatch alloc] initWithAddress:address type:type] atIndex:0];
+    self.matches = updated;
+    [self.tableView reloadData];
+    self.narrowButton.enabled = self.matches.count > 0;
+    self.statusLabel.text = [NSString stringWithFormat:@"0x%llx を追加しました", address];
 }
 
 - (void)searchTapped {
