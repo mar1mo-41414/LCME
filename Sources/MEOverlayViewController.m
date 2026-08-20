@@ -27,7 +27,6 @@ static NSString *const kCellReuseID = @"MEResultCell";
 @property (nonatomic, assign) MEValueType currentType;
 @property (nonatomic, strong) NSArray<MEMatch *> *matches;
 @property (nonatomic, assign) BOOL panelExpanded;
-@property (nonatomic, assign) BOOL toggleDidMove;
 
 @end
 
@@ -60,8 +59,13 @@ static NSString *const kCellReuseID = @"MEResultCell";
     button.titleLabel.font = [UIFont boldSystemFontOfSize:20];
     button.autoresizingMask = UIViewAutoresizingFlexibleLeftMargin | UIViewAutoresizingFlexibleBottomMargin;
 
+    // ドラッグはPanGestureRecognizerで処理する。純粋なタップ(移動なし)は
+    // PanGestureRecognizerでは最小移動量を超えないとBegan/Endedへ遷移せず
+    // コールバックが一切呼ばれないため、タップの検知はUIButton標準の
+    // touchUpInsideに任せる(ボタンの見た目のハイライトもこれと連動する)。
     UIPanGestureRecognizer *pan = [[UIPanGestureRecognizer alloc] initWithTarget:self action:@selector(handleTogglePan:)];
     [button addGestureRecognizer:pan];
+    [button addTarget:self action:@selector(toggleExpanded) forControlEvents:UIControlEventTouchUpInside];
 
     [self.view addSubview:button];
     self.toggleButton = button;
@@ -71,12 +75,7 @@ static NSString *const kCellReuseID = @"MEResultCell";
     UIView *view = pan.view;
     CGPoint translation = [pan translationInView:self.view];
 
-    if (pan.state == UIGestureRecognizerStateBegan) {
-        self.toggleDidMove = NO;
-    } else if (pan.state == UIGestureRecognizerStateChanged) {
-        if (fabs(translation.x) > 4 || fabs(translation.y) > 4) {
-            self.toggleDidMove = YES;
-        }
+    if (pan.state == UIGestureRecognizerStateChanged) {
         CGPoint center = view.center;
         center.x += translation.x;
         center.y += translation.y;
@@ -84,9 +83,6 @@ static NSString *const kCellReuseID = @"MEResultCell";
         [pan setTranslation:CGPointZero inView:self.view];
     } else if (pan.state == UIGestureRecognizerStateEnded) {
         [self clampViewToScreen:view];
-        if (!self.toggleDidMove) {
-            [self toggleExpanded];
-        }
     }
 }
 
