@@ -18,8 +18,8 @@ GameGuardian的なメモリ検索・編集・値固定(freeze)ができるツー
 
 ## インストール
 
-[Releases](../../releases) から `LCMemEditor.dylib` をダウンロードするのが手軽です
-(タグを打つたびに自動ビルドされたものが並びます)。自分でビルドする場合は以下の手順です。
+[Releases](../../releases) から `LCMemEditor.dylib` をダウンロードするのが手軽です。
+自分でビルドする場合は以下の手順です。
 
 1. Theosが構築済みの環境で本リポジトリをビルドします
 

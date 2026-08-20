@@ -20,8 +20,8 @@ value-freezing for iOS apps running on top of LiveContainer (LC).
 
 ## Install
 
-The easiest way is to grab `LCMemEditor.dylib` from [Releases](../../releases) — each
-tag is built automatically. To build it yourself instead:
+The easiest way is to grab `LCMemEditor.dylib` from [Releases](../../releases).
+To build it yourself instead:
 
 1. Build this repo with an already-configured Theos installation
 
