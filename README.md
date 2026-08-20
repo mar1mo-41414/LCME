@@ -1,75 +1,52 @@
-# LC Mem Editor
+# LCME (LiveContainer Memory Editor)
 
 [English README →](README-EN.md)
 
-LiveContainer(LC)上で動作するiOSアプリに対して、Cheat Engine / GameGuardian的な
-メモリ検索・編集・値固定(freeze)を行うための tweak(dylib)です。
+**LCME**は、LiveContainer(LC)上で動いているiOSアプリに対して、Cheat Engine /
+GameGuardian的なメモリ検索・編集・値固定(freeze)ができるツールです。
 
-LCのTweakLoader経由で対象アプリと同一プロセス内に注入される **in-process型** のツールで、
-`task_for_pid` のような特別な権限は使わず、`mach_vm_*` 系APIで自プロセス
-(`mach_task_self()`)のメモリを直接読み書きします。
+- 値を検索して候補アドレスを絞り込み、書き換えたり固定したりできます
+- 値が常に変動する対象向けの範囲検索や、アドレスを知っていれば直接指定する機能もあります
+- 内部実装や動作原理などの技術的な話は [docs/TECHNICAL.md](docs/TECHNICAL.md) にまとめています
 
-## 特徴
+## 対応環境
 
-- dylibをLCのTweaksフォルダに置いて対象アプリのTweak Folderに指定するだけで動作(追加設定不要)
-- 値検索 → 候補アドレス一覧 → 個別に値編集 / 固定(freeze)
-- 前回候補を保持したまま再検索する絞り込み(narrowing)検索
-- **範囲検索**: min〜maxの範囲で候補を探す(値が常に変動していて完全一致では狙いにくい対象向け。String型は非対応)
-- **アドレス直接指定**: 検索を介さず16進アドレスを直接候補一覧に追加できる
-- 候補一覧はパネルを開いている間0.5秒間隔で自動更新され、値の変動をリアルタイムに追跡できる
-- 固定(freeze)は**書き込みループ方式**(100ms間隔で再書き込み)。スレッド一時停止は行わない
-- 対応型: Int8/16/32/64・UInt8/16/32/64・Float・Double・String(UTF-8, 部分一致)
-- float/doubleは許容誤差ありの緩い一致判定(GameGuardian的挙動)
-- デフォルトは書き込み可能な匿名(malloc系)領域のみを高速スキャン。オプションで全領域スキャンも可能
-- 対象アプリの最前面にオーバーレイパネルを表示。パネル外のタップは背後のアプリへそのまま通過する
-
-## 非対象(意図的に実装していない機能)
-
-- ゲーム全体の一時停止/再開(in-process注入ではUI/操作も巻き込んで止まってしまうため、値freezeで代替)
-- コード書き換え、ポインタ探索チェーン、メモリダンプなどの高度な機能
-
-## ビルド
-
-Theos が構築済みであることが前提です。
-
-```bash
-export THEOS=~/.theos
-make
-```
-
-成果物は `.theos/obj/debug/LCMemEditor.dylib` に生成されます(fat/thinどちらも同名で並びます)。
-リリースビルドしたい場合は `make FINALPACKAGE=1` を使ってください。
+- **LiveContainer(非脱獄環境でOK)** 上で動作するiOSアプリが対象です。**脱獄は不要です。**
+- iOS 26以降を想定しています
+- LCMEはLCのTweakLoaderを使ってdylibとして対象アプリと同じプロセス内に読み込まれるだけの
+  ツールで、`task_for_pid`のような特権APIは使用していません
 
 ## インストール
 
-1. 上記でビルドした `LCMemEditor.dylib` をLiveContainerのTweaksフォルダに配置する
-2. 対象アプリの Tweak Folder としてこのdylibを含むフォルダを指定する
-3. アプリを起動すると、右側に半透明の丸いトグルボタン("M")がオーバーレイ表示される
+1. Theosが構築済みの環境で本リポジトリをビルドします
+
+   ```bash
+   export THEOS=~/.theos
+   make
+   ```
+
+   成果物として `.theos/obj/debug/LCMemEditor.dylib` が生成されます
+
+2. できあがった `LCMemEditor.dylib` をLiveContainerのTweaksフォルダに配置します
+3. 対象アプリの Tweak Folder として、このdylibを含むフォルダを指定します
+4. アプリを起動すると、画面右側に緑色の丸いトグルボタン(「LCME」)がオーバーレイ表示されます
 
 ## 使い方
 
 1. トグルボタンをタップしてパネルを開く
-2. 「型」ボタンでスキャンする型を選択(Int32/Float/Stringなど)
+2. 「型」ボタンでスキャンする型を選ぶ(Int32/Float/Stringなど)
 3. 値を入力して「検索(新規)」→ 候補アドレス一覧が表示される
-   - 「範囲検索」をONにすると入力欄が最小値/最大値の2つになり、min <= 値 <= max を満たす候補を探す
-     (体力・所持金など値が常に変動していて完全一致で狙いにくい対象向け。String型では使用不可)
-4. ゲーム内で値を変化させてから、変化後の値(範囲検索時は新しいmin/max)を入力して「絞込」→ 候補がさらに絞られる
+   - 「範囲検索」をONにすると最小値/最大値の2欄になり、その範囲内の値を持つ候補を探せる
+     (体力・所持金など、常に変動していて完全一致で狙いにくい対象向け)
+4. ゲーム内で値を変化させてから、変化後の値を入力して「絞込」→ 候補がさらに絞られる
 5. 一覧の各行で値を編集してEnter/return → その場で書き込み
 6. 「固定」ボタンでそのアドレスをfreeze対象に追加/解除
-7. パネル下部の「フリーズ実行中/停止中」ボタンで、freeze対象全体の書き込みループをON/OFF
-8. アドレスが既に分かっている場合は「0xアドレス直接指定」欄に16進で入力して「追加」→ 検索なしで候補一覧に加わり、以後は他の候補と同様に変動追跡・編集・固定ができる
+7. パネル下部の「フリーズ実行中/停止中」ボタンで、freeze対象全体のON/OFFを切り替え
+8. アドレスが既に分かっている場合は「0xアドレス直接指定」欄に16進で入力して「追加」
 
-パネルのヘッダー(タイトルバー)とトグルボタンはドラッグで位置を移動できます。
-
-## アーキテクチャ
-
-- `Sources/MEMachVM.h` — iOS SDKヘッダでは`#error`によりブロックされている
-  `mach_vm_region_recurse` / `mach_vm_read` / `mach_vm_write` を手動プロトタイプ宣言
-  (実行時のlibSystemにはシンボルが存在するため動作する)
-- `Sources/MemScanner.*` — メモリ領域の列挙・スキャン・絞り込み・読み書きのコア
-- `Sources/FreezeManager.*` — `dispatch_source_timer` による書き込みループ方式のfreeze実装
-- `Sources/MEOverlayWindow.*` / `MEOverlayViewController.*` / `MEResultCell.*` — UIオーバーレイ
-- `Sources/MEConstructor.m` — `__attribute__((constructor))` によるdylibロード時の自動起動
+候補一覧はパネルを開いている間、自動的に値を再読み込みして表示を更新するので、
+値の変動をリアルタイムに眺めることもできます。パネルのヘッダーとトグルボタンは
+ドラッグで位置を移動できます。
 
 ## 注意事項
 

@@ -53,17 +53,23 @@ static NSString *const kCellReuseID = @"MEResultCell";
 #pragma mark - トグルボタン(常時表示・ドラッグ可能)
 
 - (void)buildToggleButton {
-    CGFloat size = 56;
+    // GameGuardian風の緑バッジ(濃緑の地に明るい緑のリング+グロー)。
+    CGFloat size = 60;
     CGRect screen = self.view.bounds;
     UIButton *button = [UIButton buttonWithType:UIButtonTypeSystem];
     button.frame = CGRectMake(screen.size.width - size - 12, screen.size.height * 0.3, size, size);
-    button.backgroundColor = [UIColor colorWithRed:0.1 green:0.1 blue:0.1 alpha:0.7];
+    button.backgroundColor = [UIColor colorWithRed:0.04 green:0.16 blue:0.08 alpha:0.92];
     button.layer.cornerRadius = size / 2;
-    button.layer.borderWidth = 1;
-    button.layer.borderColor = [UIColor colorWithWhite:1 alpha:0.3].CGColor;
-    [button setTitle:@"M" forState:UIControlStateNormal];
-    button.tintColor = [UIColor whiteColor];
-    button.titleLabel.font = [UIFont boldSystemFontOfSize:20];
+    button.layer.borderWidth = 2;
+    button.layer.borderColor = [UIColor colorWithRed:0.3 green:0.95 blue:0.4 alpha:0.9].CGColor;
+    button.layer.shadowColor = [UIColor colorWithRed:0.3 green:0.95 blue:0.4 alpha:1].CGColor;
+    button.layer.shadowOpacity = 0.6;
+    button.layer.shadowRadius = 6;
+    button.layer.shadowOffset = CGSizeZero;
+    [button setTitle:@"LCME" forState:UIControlStateNormal];
+    [button setTitleColor:[UIColor colorWithRed:0.55 green:1 blue:0.6 alpha:1] forState:UIControlStateNormal];
+    button.titleLabel.font = [UIFont boldSystemFontOfSize:12];
+    button.titleLabel.adjustsFontSizeToFitWidth = YES;
     button.autoresizingMask = UIViewAutoresizingFlexibleLeftMargin | UIViewAutoresizingFlexibleBottomMargin;
 
     // ドラッグはPanGestureRecognizerで処理する。純粋なタップ(移動なし)は
@@ -176,9 +182,9 @@ static NSString *const kCellReuseID = @"MEResultCell";
     [header addGestureRecognizer:headerPan];
 
     UILabel *title = [[UILabel alloc] initWithFrame:CGRectMake(pad, 0, width - 50, 36)];
-    title.text = @"LC Mem Editor";
-    title.textColor = [UIColor whiteColor];
-    title.font = [UIFont boldSystemFontOfSize:14];
+    title.text = @"LCME";
+    title.textColor = [UIColor colorWithRed:0.55 green:1 blue:0.6 alpha:1];
+    title.font = [UIFont boldSystemFontOfSize:16];
     [header addSubview:title];
     self.titleLabel = title;
 

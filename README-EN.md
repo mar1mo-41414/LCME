@@ -1,78 +1,54 @@
-# LC Mem Editor
+# LCME (LiveContainer Memory Editor)
 
 [日本語版はこちら → README.md](README.md)
 
-A tweak (dylib) for LiveContainer (LC) that provides Cheat Engine / GameGuardian-style
-memory search, edit, and value-freezing for iOS apps running on top of LC.
+**LCME** provides Cheat Engine / GameGuardian-style memory search, edit, and
+value-freezing for iOS apps running on top of LiveContainer (LC).
 
-It is injected via LC's TweakLoader and runs **in-process** with the target app.
-It never uses `task_for_pid` or similar privileged APIs — it only reads/writes its own
-process memory (`mach_task_self()`) via `mach_vm_*` APIs.
+- Search a value, narrow down candidate addresses, and edit or freeze them
+- Includes a range search for values that keep fluctuating, and a way to add an
+  address directly if you already know it
+- For implementation details and how it works internally, see [docs/TECHNICAL-EN.md](docs/TECHNICAL-EN.md)
 
-## Features
+## Requirements
 
-- Drop the dylib into LC's Tweaks folder and assign it as the target app's Tweak Folder — no extra configuration needed
-- Search a value → get a list of candidate addresses → edit/freeze individual candidates
-- Narrowing search that re-scans the previous candidate set as values change in-game
-- **Range search**: find candidates within a min–max range, for targets whose value keeps
-  fluctuating and are hard to hit with an exact match (String type not supported)
-- **Direct address entry**: add a hex address straight to the candidate list without searching
-- The candidate list auto-refreshes every 0.5s while the panel is open, so you can watch values change live
-- Freeze uses a **write-loop approach** (rewrites every 100ms); no thread suspension
-- Supported types: Int8/16/32/64, UInt8/16/32/64, Float, Double, String (UTF-8, substring match)
-- Float/Double comparisons use a small tolerance (GameGuardian-like fuzzy matching)
-- Default scan targets writable anonymous (malloc-family) memory only, for speed; a full-memory scan option is also available
-- The panel overlays on top of the target app; taps outside the panel/toggle pass straight through to the app underneath
-
-## Explicitly out of scope
-
-- Pausing/resuming the whole game (in-process injection would also freeze the UI/controls; value-freeze is used instead)
-- Advanced features like code patching, pointer-chain scanning, or memory dumping
-
-## Build
-
-Requires an already-configured Theos installation.
-
-```bash
-export THEOS=~/.theos
-make
-```
-
-The build output is `.theos/obj/debug/LCMemEditor.dylib`. For a release build, use `make FINALPACKAGE=1`.
+- Targets iOS apps running under **LiveContainer, on a non-jailbroken device — no
+  jailbreak required.**
+- Built against iOS 26+
+- LCME is loaded as a dylib into the same process as the target app via LC's
+  TweakLoader; it never uses privileged, cross-process APIs like `task_for_pid`
 
 ## Install
 
-1. Copy the built `LCMemEditor.dylib` into LiveContainer's Tweaks folder
-2. Set the target app's Tweak Folder to a folder containing this dylib
-3. Launch the app — a translucent round toggle button ("M") appears as an overlay
+1. Build this repo with an already-configured Theos installation
+
+   ```bash
+   export THEOS=~/.theos
+   make
+   ```
+
+   This produces `.theos/obj/debug/LCMemEditor.dylib`
+
+2. Copy the built `LCMemEditor.dylib` into LiveContainer's Tweaks folder
+3. Set the target app's Tweak Folder to a folder containing this dylib
+4. Launch the app — a green round toggle button ("LCME") appears as an overlay on the right side of the screen
 
 ## Usage
 
 1. Tap the toggle button to open the panel
 2. Pick a scan type via the "型" (type) button (Int32, Float, String, etc.)
 3. Enter a value and tap "検索(新規)" (New Search) to get a candidate address list
-   - Turn on "範囲検索" (Range search) to switch the input to two fields, min and max,
-     and find candidates where min <= value <= max (useful for HP, currency, etc. that
-     keep changing; not available for String)
-4. Change the value in-game, enter the new value (or new min/max in range mode), and tap
-   "絞込" (Narrow) to shrink the candidate list
+   - Turn on "範囲検索" (Range search) to switch to min/max fields and find candidates
+     within that range (useful for HP, currency, etc. that keep changing)
+4. Change the value in-game, enter the new value, and tap "絞込" (Narrow) to shrink the candidate list
 5. Edit a value inline in a row and press Enter/Return to write it immediately
 6. Tap "固定" (Freeze) on a row to add/remove that address from the freeze set
-7. Use the "フリーズ実行中/停止中" button at the bottom of the panel to start/stop the write loop for all frozen entries
-8. If you already know an address, type it in hex into the "0xアドレス直接指定" field and tap "追加" (Add) —
-   it joins the candidate list without a search, and can be tracked/edited/frozen like any other candidate
+7. Use the "フリーズ実行中/停止中" button at the bottom to start/stop the write loop for all frozen entries
+8. If you already know an address, type it in hex into "0xアドレス直接指定" and tap "追加" (Add)
 
-The panel header and the toggle button can both be dragged to reposition them.
-
-## Architecture
-
-- `Sources/MEMachVM.h` — manually declares prototypes for `mach_vm_region_recurse` /
-  `mach_vm_read` / `mach_vm_write`, which the iOS SDK header blocks with `#error`
-  (the symbols still exist in libSystem at runtime, so this works)
-- `Sources/MemScanner.*` — core region enumeration, scanning, narrowing, and read/write logic
-- `Sources/FreezeManager.*` — write-loop freeze implementation using a `dispatch_source` timer
-- `Sources/MEOverlayWindow.*` / `MEOverlayViewController.*` / `MEResultCell.*` — the UI overlay
-- `Sources/MEConstructor.m` — auto-starts on dylib load via `__attribute__((constructor))`
+While the panel is open, the candidate list keeps refreshing automatically, so you can
+watch values change in real time. Both the panel header and the toggle button can be
+dragged to reposition them.
 
 ## Notice
 
